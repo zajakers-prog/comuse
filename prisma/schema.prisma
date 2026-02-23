@@ -1,0 +1,313 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String   @unique
+  displayName  String
+  bio          String?
+  avatarUrl    String?
+  ethAddress   String?  // Ethereum wallet for revenue
+  passwordHash String
+  role         UserRole @default(CREATOR)
+  isPremium    Boolean  @default(false) // 상위노출 유료 플랜
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  worksAuthored   Work[]              @relation("WorkAuthor")
+  segmentsWritten Segment[]
+  branchesCreated Branch[]
+  contributions   ContributionScore[]
+  revenueShares   RevenueShare[]
+  followers       Follow[]            @relation("FollowTarget")
+  following       Follow[]            @relation("FollowSource")
+  likes           WorkLike[]
+  comments        Comment[]
+}
+
+enum UserRole {
+  CREATOR
+  ADMIN
+}
+
+// ─────────────────────────────────────────────
+// WORK (IP 단위 - 하나의 창작 프로젝트)
+// ─────────────────────────────────────────────
+
+model Work {
+  id          String     @id @default(uuid())
+  title       String
+  logline     String     // 핵심 소재 한 줄 요약
+  description String?
+  genre       WorkGenre
+  tags        String[]
+  coverImage  String?
+  status      WorkStatus @default(OPEN)
+  isFeatured  Boolean    @default(false) // 프리미엄 상위노출
+  views       Int        @default(0)
+
+  // 원작자 (아이디어 제공자)
+  authorId String
+  author   User   @relation("WorkAuthor", fields: [authorId], references: [id])
+
+  branches      Branch[]
+  contributions ContributionScore[]
+  ipSale        IPSale?
+  likes         WorkLike[]
+  comments      Comment[]
+
+  // 메인 브랜치 (최초 생성시 자동 생성)
+  mainBranchId String? @unique
+  mainBranch   Branch? @relation("MainBranch", fields: [mainBranchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum WorkGenre {
+  NOVEL       // 소설
+  SCREENPLAY  // 시나리오
+  PLAY        // 희곡
+  MUSICAL     // 뮤지컬 각본
+  VARIETY     // 예능 각본
+  DRAMA       // 드라마
+  LYRICS      // 작사
+  COMPOSITION // 작곡/공동작곡
+  RESEARCH    // 공동연구
+  OTHER
+}
+
+enum WorkStatus {
+  OPEN        // 기여자 모집 중
+  IN_PROGRESS
+  COMPLETED   // 완성됨
+  SOLD        // IP 판매됨
+  ARCHIVED
+}
+
+// ─────────────────────────────────────────────
+// BRANCH (가지치기 - git branch 개념)
+// ─────────────────────────────────────────────
+
+model Branch {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  status      BranchStatus @default(ACTIVE)
+
+  workId String
+  work   Work   @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  // 어떤 브랜치에서 갈라져 나왔는지
+  parentBranchId String?
+  parentBranch   Branch?  @relation("BranchForks", fields: [parentBranchId], references: [id])
+  childBranches  Branch[] @relation("BranchForks")
+
+  // 어떤 Segment 이후 지점에서 분기했는지 (null = 처음부터 새로 시작)
+  forkedAfterSegmentId String?
+  forkedAfterSegment   Segment? @relation("ForkPoint", fields: [forkedAfterSegmentId], references: [id])
+
+  creatorId String
+  creator   User   @relation(fields: [creatorId], references: [id])
+
+  segments Segment[]
+  likes    Int      @default(0)
+
+  // Work에서 mainBranch로 참조됨
+  mainBranchOf Work? @relation("MainBranch")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BranchStatus {
+  ACTIVE
+  MERGED   // 다른 브랜치에 흡수됨
+  ARCHIVED
+}
+
+// ─────────────────────────────────────────────
+// SEGMENT (각 기여 단위 - 챕터/장면/절 등)
+// ─────────────────────────────────────────────
+
+model Segment {
+  id        String        @id @default(uuid())
+  title     String?       // e.g., "1장", "Act 1 Scene 2"
+  body      String        // 실제 내용
+  order     Int           // 브랜치 내 순서
+  type      SegmentType   @default(BODY)
+  wordCount Int           @default(0)
+  status    SegmentStatus @default(PUBLISHED)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  // 이 segment 지점에서 분기된 브랜치들
+  forkedBranches Branch[] @relation("ForkPoint")
+
+  // AI 분석 결과
+  aiScore SegmentAIScore?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, order])
+}
+
+enum SegmentType {
+  IDEA    // 소재/아이디어만 제공
+  OPENING // 도입부
+  BODY    // 본문
+  CLIMAX  // 클라이맥스
+  ENDING  // 결말
+}
+
+enum SegmentStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ─────────────────────────────────────────────
+// AI ANALYSIS
+// ─────────────────────────────────────────────
+
+model SegmentAIScore {
+  id        String  @id @default(uuid())
+  segmentId String  @unique
+  segment   Segment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  // Claude API가 분석한 점수들 (0.0 ~ 1.0)
+  originalityScore Float @default(0) // 독창성
+  coherenceScore   Float @default(0) // 이야기 흐름 일관성
+  qualityScore     Float @default(0) // 글 품질
+  impactScore      Float @default(0) // 후속 기여에 미친 영향
+  roleWeight       Float @default(0) // 역할 가중치 (아이디어 vs 집필 등)
+
+  rawAnalysis String? // Claude 원문 분석
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// CONTRIBUTION SCORE (작품 단위 기여도 집계)
+// ─────────────────────────────────────────────
+
+model ContributionScore {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  workId String
+  work   Work   @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  percentage     Float    @default(0) // 최종 기여 비율 (합계 100%)
+  segmentCount   Int      @default(0)
+  totalWords     Int      @default(0)
+  lastCalculated DateTime @default(now())
+
+  revenueShares RevenueShare[]
+
+  @@unique([userId, workId])
+}
+
+// ─────────────────────────────────────────────
+// IP SALE & REVENUE
+// ─────────────────────────────────────────────
+
+model IPSale {
+  id              String     @id @default(uuid())
+  workId          String     @unique
+  work            Work       @relation(fields: [workId], references: [id])
+  buyerName       String
+  saleAmount      Float // USD 기준 또는 ETH
+  currency        String     @default("ETH")
+  txHash          String? // 이더리움 트랜잭션 해시
+  contractAddress String? // 스마트 컨트랙트 주소
+  status          SaleStatus @default(PENDING)
+  soldAt          DateTime   @default(now())
+
+  revenueShares RevenueShare[]
+}
+
+enum SaleStatus {
+  PENDING     // 배분 대기
+  DISTRIBUTED // 이더리움으로 배분 완료
+  DISPUTED
+}
+
+model RevenueShare {
+  id             String @id @default(uuid())
+  userId         String
+  user           User   @relation(fields: [userId], references: [id])
+  ipSaleId       String
+  ipSale         IPSale @relation(fields: [ipSaleId], references: [id])
+  contributionId String
+  contribution   ContributionScore @relation(fields: [contributionId], references: [id])
+
+  percentage Float  // 이 사용자의 배분 비율
+  amountEth  Float  // 실제 배분된 ETH 양
+  txHash     String? // 이더리움 트랜잭션 해시
+  status     ShareStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+}
+
+enum ShareStatus {
+  PENDING
+  SENT
+  CONFIRMED
+}
+
+// ─────────────────────────────────────────────
+// SOCIAL
+// ─────────────────────────────────────────────
+
+model Follow {
+  id        String   @id @default(uuid())
+  sourceId  String
+  source    User     @relation("FollowSource", fields: [sourceId], references: [id])
+  targetId  String
+  target    User     @relation("FollowTarget", fields: [targetId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([sourceId, targetId])
+}
+
+model WorkLike {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  workId    String
+  work      Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, workId])
+}
+
+model Comment {
+  id       String    @id @default(uuid())
+  body     String
+  userId   String
+  user     User      @relation(fields: [userId], references: [id])
+  workId   String
+  work     Work      @relation(fields: [workId], references: [id], onDelete: Cascade)
+  parentId String?
+  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentThread")
+
+  createdAt DateTime @default(now())
+}
