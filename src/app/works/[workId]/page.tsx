@@ -94,23 +94,44 @@ export default function WorkDetailPage({
   const [activeSegments, setActiveSegments] = useState<Segment[]>([]);
   const [tab, setTab] = useState<"read" | "tree" | "contributions">("read");
   const [showEditor, setShowEditor] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
   const [forkModal, setForkModal] = useState<{
     parentBranchId: string;
     afterSegmentId?: string;
   } | null>(null);
 
   async function loadWork() {
-    const res = await fetch(`/api/works/${workId}`);
-    const data = await res.json();
+    const [workRes, likeRes] = await Promise.all([
+      fetch(`/api/works/${workId}`),
+      fetch(`/api/works/${workId}/like`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    ]);
+    const data = await workRes.json();
     if (data.success) {
       setWork(data.data);
+      setLikeCount(data.data._count.likes);
       const mb = data.data.mainBranch;
       if (mb) {
         setActiveBranchId(mb.id);
         setActiveSegments(mb.segments ?? []);
       }
     }
+    const likeData = await likeRes.json();
+    if (likeData.success) { setLiked(likeData.data.liked); setLikeCount(likeData.data.count); }
     setLoading(false);
+  }
+
+  async function toggleLike() {
+    if (!token) return;
+    const res = await fetch(`/api/works/${workId}/like`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (data.success) {
+      setLiked(data.data.liked);
+      setLikeCount((c) => c + (data.data.liked ? 1 : -1));
+    }
   }
 
   useEffect(() => {
@@ -119,17 +140,11 @@ export default function WorkDetailPage({
   }, [workId]);
 
   async function loadBranch(branchId: string) {
-    const res = await fetch(`/api/branches?workId=${workId}`);
+    const res = await fetch(`/api/branches/${branchId}`);
     const data = await res.json();
     if (!data.success) return;
-
-    // 브랜치의 segments를 가져오기 위해 작품 상세를 다시 활용
-    // (실제로는 /api/branches/:id 엔드포인트를 쓰는 게 좋지만, 간소화)
-    const allBranches = flattenBranches(data.data);
-    const branch = allBranches.find((b: { id: string }) => b.id === branchId);
-    if (branch) {
-      setActiveBranchId(branchId);
-    }
+    setActiveBranchId(branchId);
+    setActiveSegments(data.data.segments ?? []);
   }
 
   function flattenBranches(nodes: { id: string; children?: { id: string }[] }[]): { id: string }[] {
@@ -237,7 +252,9 @@ export default function WorkDetailPage({
             <span>·</span>
             <span>기여자 {work.contributions.length}명</span>
             <span>·</span>
-            <span>♥ {work._count.likes}</span>
+            <button onClick={toggleLike} className={`transition-colors ${liked ? "text-red-500" : "hover:text-red-400"}`}>
+              {liked ? "♥" : "♡"} {likeCount}
+            </button>
           </div>
 
           {user && work.status === "OPEN" && (
