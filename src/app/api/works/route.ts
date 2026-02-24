@@ -16,47 +16,52 @@ const CreateWorkSchema = z.object({
 
 // GET /api/works - 작품 목록
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const page = parseInt(searchParams.get("page") ?? "1");
-  const limit = parseInt(searchParams.get("limit") ?? "20");
-  const genre = searchParams.get("genre") as WorkGenre | null;
-  const status = searchParams.get("status") as WorkStatus | null;
-  const featured = searchParams.get("featured") === "true";
-  const q = searchParams.get("q");
+  try {
+    const { searchParams } = new URL(req.url);
+    const page = parseInt(searchParams.get("page") ?? "1");
+    const limit = parseInt(searchParams.get("limit") ?? "20");
+    const genre = searchParams.get("genre") as WorkGenre | null;
+    const status = searchParams.get("status") as WorkStatus | null;
+    const featured = searchParams.get("featured") === "true";
+    const q = searchParams.get("q");
 
-  const where = {
-    ...(genre && { genre }),
-    ...(status && { status }),
-    ...(featured && { isFeatured: true }),
-    ...(q && {
-      OR: [
-        { title: { contains: q, mode: "insensitive" as const } },
-        { logline: { contains: q, mode: "insensitive" as const } },
-        { tags: { has: q } },
-      ],
-    }),
-  };
+    const where = {
+      ...(genre && { genre }),
+      ...(status && { status }),
+      ...(featured && { isFeatured: true }),
+      ...(q && {
+        OR: [
+          { title: { contains: q, mode: "insensitive" as const } },
+          { logline: { contains: q, mode: "insensitive" as const } },
+          { tags: { has: q } },
+        ],
+      }),
+    };
 
-  const { skip, take } = paginate(page, limit);
-  const [works, total] = await Promise.all([
-    prisma.work.findMany({
-      where,
-      skip,
-      take,
-      orderBy: [{ isFeatured: "desc" }, { views: "desc" }, { createdAt: "desc" }],
-      include: {
-        author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true },
+    const { skip, take } = paginate(page, limit);
+    const [works, total] = await Promise.all([
+      prisma.work.findMany({
+        where,
+        skip,
+        take,
+        orderBy: [{ isFeatured: "desc" }, { views: "desc" }, { createdAt: "desc" }],
+        include: {
+          author: {
+            select: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+          _count: {
+            select: { branches: true, contributions: true, likes: true, comments: true },
+          },
         },
-        _count: {
-          select: { branches: true, contributions: true, likes: true, comments: true },
-        },
-      },
-    }),
-    prisma.work.count({ where }),
-  ]);
+      }),
+      prisma.work.count({ where }),
+    ]);
 
-  return ok({ works, total, page, limit, totalPages: Math.ceil(total / limit) });
+    return ok({ works, total, page, limit, totalPages: Math.ceil(total / limit) });
+  } catch (err) {
+    console.error(err);
+    return error("서버 오류", 500);
+  }
 }
 
 // POST /api/works - 새 작품 생성

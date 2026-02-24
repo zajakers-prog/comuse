@@ -59,11 +59,17 @@ export default function WorksPage() {
 
     try {
       const res = await fetch(`/api/works?${params}`);
+      if (!res.ok) {
+        console.error("작품 목록 조회 실패:", res.status);
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setWorks(data.data.works);
         setTotal(data.data.total);
       }
+    } catch (err) {
+      console.error("fetchWorks 오류:", err);
     } finally {
       setLoading(false);
     }
