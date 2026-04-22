@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Comuse",
+    "slug": "comuse",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "comuse",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.comuse.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.comuse.app"
+    },
+    "plugins": ["expo-router", "expo-secure-store"]
+  }
+}

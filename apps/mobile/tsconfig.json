@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@comuse/shared": ["../../packages/shared/src"],
+      "@comuse/api": ["../../packages/api/src"]
+    }
+  }
+}

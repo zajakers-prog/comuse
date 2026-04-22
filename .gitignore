@@ -1,18 +1,30 @@
 node_modules
 .env
+.env*.local
 
 # Next.js
 .next/
 out/
 
+# Expo
+.expo/
+
 # Build
 dist/
+build/
 
-# Prisma generated
-/generated/prisma
+# Turbo
+.turbo
 
-# TypeScript build cache
-tsconfig.tsbuildinfo
+# Supabase
+supabase/.temp
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
 
 # Misc
+.DS_Store
 *.log
+*.pem
+.vercel
