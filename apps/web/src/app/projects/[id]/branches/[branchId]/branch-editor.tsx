@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { TiptapEditor } from '@/components/editor/tiptap-editor';
 import { AiPanel } from '@/components/ai/ai-panel';
@@ -45,11 +45,11 @@ export function BranchEditor({
   const [isAuthor, setIsAuthor] = useState(false);
 
   // 클라이언트에서 직접 확인 (서버/클라이언트 불일치 방지)
-  useState(() => {
+  useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setIsAuthor(user?.id === authorId);
     });
-  });
+  }, [authorId, supabase]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -66,7 +66,7 @@ export function BranchEditor({
       setEditing(false);
       router.refresh();
     }
-  }, [content, percent, branchId, supabase, router]);
+  }, [content, percent, branchId, supabase, router, isMusicBranch, musicData]);
 
   const handleDelete = useCallback(async () => {
     if (!confirm('이 브랜치를 삭제할까요? 되돌릴 수 없습니다.')) return;
